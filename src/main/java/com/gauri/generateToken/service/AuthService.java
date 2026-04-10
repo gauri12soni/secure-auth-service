@@ -19,6 +19,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.MessageDigest;
@@ -49,6 +50,9 @@ public class AuthService {
 
     @Autowired
     private AuthenticationManager authenticationManager;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     @Value("${jwt.access.expiration}")
     private long accessExp;
@@ -200,55 +204,158 @@ public class AuthService {
     }
 
     // ================= REFRESH =================
-    // FIXED: Accepts (String rawToken, String currentIp, String currentUserAgent)
-    @Transactional
-    public JwtResponse refresh(String rawToken, String currentIp, String currentUserAgent) {
-        String tokenHash = sha256(rawToken);
+//    // FIXED: Accepts (String rawToken, String currentIp, String currentUserAgent)
+//    @Transactional
+//    public JwtResponse refresh(String rawToken, String currentIp, String currentUserAgent) {
+//        String tokenHash = sha256(rawToken);
+//
+//        RefreshToken storedToken = refreshTokenRepository.findByTokenHash(tokenHash)
+//                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token - please login again"));
+//
+//        // Check if token revoked
+//        if (storedToken.isRevoked()) {
+//            Session session = storedToken.getSession();
+//            refreshTokenRepository.deleteBySession(session);
+//            sessionRepository.delete(session);
+////            sessionRepository.flush();
+//            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+//                    "Token revoked - session terminated. Please login again.");
+//        }
+//
+//        Session session = storedToken.getSession();
+//
+//        // Check expiry
+//        if (storedToken.getExpiryDate().isBefore(Instant.now())) {
+//            refreshTokenRepository.delete(storedToken);
+//            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token expired");
+//        }
+//
+//        if (session.getExpiresAt().isBefore(Instant.now())) {
+//            refreshTokenRepository.deleteBySession(session);
+//            sessionRepository.delete(session);
+//            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Session expired");
+//        }
+//
+//        // Security checks using passed parameters
+//        if (!session.getIpAddress().equals(currentIp)) {
+////            storedToken.setRevoked(true);
+////            refreshTokenRepository.save(storedToken);
+////            refreshTokenRepository.deleteBySession(session);
+////            sessionRepository.delete(session);
+//////            sessionRepository.flush();
+//            // Use TransactionTemplate to commit immediately
+//            transactionTemplate.execute(status -> {
+//                refreshTokenRepository.deleteBySession(session);
+//                sessionRepository.delete(session);
+//                sessionRepository.flush();
+//                return null;
+//            });
+//            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "IP changed - session terminated");
+//        }
+//
+//        if (!session.getUserAgent().equals(currentUserAgent)) {
+////            storedToken.setRevoked(true);
+////            refreshTokenRepository.save(storedToken);
+//            refreshTokenRepository.deleteBySession(session);
+//            sessionRepository.delete(session);
+////            sessionRepository.flush();
+//            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User-Agent changed - session terminated");
+//        }
+//
+//        // Token rotation: Revoke old token, create new one
+//        storedToken.setRevoked(true);
+//        refreshTokenRepository.save(storedToken);
+//
+//        // Create new refresh token
+//        String newRawToken = generateSecureToken();
+//        RefreshToken newToken = new RefreshToken();
+//        newToken.setTokenHash(sha256(newRawToken));
+//        newToken.setSession(session);
+//        newToken.setCreatedAt(Instant.now());
+//        newToken.setExpiryDate(Instant.now().plusMillis(refreshExp));
+//        newToken.setRevoked(false);
+//        refreshTokenRepository.save(newToken);
+//
+//        // Update session
+//        session.setLastActive(Instant.now());
+//        session.setExpiresAt(Instant.now().plusMillis(refreshExp));
+//        sessionRepository.save(session);
+//
+//        // Generate new access token
+//        String newAccessToken = jwtUtil.generateToken(
+//                session.getUser().getUsername(),
+//                session.getSessionId(),
+//                accessExp
+//        );
+//
+//        return new JwtResponse("Token refreshed", newAccessToken, newRawToken);
+//    }
 
-        RefreshToken storedToken = refreshTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token - please login again"));
 
-        // Check if token revoked
-        if (storedToken.isRevoked()) {
-            Session session = storedToken.getSession();
-            refreshTokenRepository.deleteBySession(session);
-            sessionRepository.delete(session);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                    "Token revoked - session terminated. Please login again.");
-        }
+// ================= REFRESH =================
+public JwtResponse refresh(String rawToken, String currentIp, String currentUserAgent) {
+    String tokenHash = sha256(rawToken);
 
+    // Find the token
+    RefreshToken storedToken = refreshTokenRepository.findByTokenHash(tokenHash)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token - please login again"));
+
+    // Check if token revoked
+    if (storedToken.isRevoked()) {
         Session session = storedToken.getSession();
+        transactionTemplate.execute(status -> {
+            refreshTokenRepository.deleteBySession(session);
+            sessionRepository.delete(session);
+            return null;
+        });
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                "Token revoked - session terminated. Please login again.");
+    }
 
-        // Check expiry
-        if (storedToken.getExpiryDate().isBefore(Instant.now())) {
+    Session session = storedToken.getSession();
+
+    // Check token expiry
+    if (storedToken.getExpiryDate().isBefore(Instant.now())) {
+        transactionTemplate.execute(status -> {
             refreshTokenRepository.delete(storedToken);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token expired");
-        }
+            return null;
+        });
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token expired");
+    }
 
-        if (session.getExpiresAt().isBefore(Instant.now())) {
+    // Check session expiry
+    if (session.getExpiresAt().isBefore(Instant.now())) {
+        transactionTemplate.execute(status -> {
             refreshTokenRepository.deleteBySession(session);
             sessionRepository.delete(session);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Session expired");
-        }
+            return null;
+        });
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Session expired");
+    }
 
-        // Security checks using passed parameters
-        if (!session.getIpAddress().equals(currentIp)) {
-            storedToken.setRevoked(true);
-            refreshTokenRepository.save(storedToken);
+    // Check IP address
+    if (!session.getIpAddress().equals(currentIp)) {
+        transactionTemplate.execute(status -> {
             refreshTokenRepository.deleteBySession(session);
             sessionRepository.delete(session);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "IP changed - session terminated");
-        }
+            return null;
+        });
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "IP changed - session terminated");
+    }
 
-        if (!session.getUserAgent().equals(currentUserAgent)) {
-            storedToken.setRevoked(true);
-            refreshTokenRepository.save(storedToken);
+    // Check User-Agent
+    if (!session.getUserAgent().equals(currentUserAgent)) {
+        transactionTemplate.execute(status -> {
             refreshTokenRepository.deleteBySession(session);
             sessionRepository.delete(session);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User-Agent changed - session terminated");
-        }
+            return null;
+        });
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User-Agent changed - session terminated");
+    }
 
-        // Token rotation: Revoke old token, create new one
+    // Happy path - Token rotation
+    return transactionTemplate.execute(status -> {
+        // Revoke old token
         storedToken.setRevoked(true);
         refreshTokenRepository.save(storedToken);
 
@@ -275,8 +382,8 @@ public class AuthService {
         );
 
         return new JwtResponse("Token refreshed", newAccessToken, newRawToken);
-    }
-
+    });
+}
     // ================= LOGOUT =================
     @Transactional
     public String logout(String sessionId) {
