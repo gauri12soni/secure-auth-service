@@ -15,9 +15,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Map;
 
 @Component
 public class JwtFilter extends OncePerRequestFilter {
@@ -31,19 +34,15 @@ public class JwtFilter extends OncePerRequestFilter {
     @Autowired
     private CustomUserDetailsService userDetailsService;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        String path = request.getServletPath();
-
-        // Allow only specific public endpoints
-        if (path.equals("/auth/login") || path.equals("/auth/register") || path.equals("/auth/refresh")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
 
         final String authHeader = request.getHeader("Authorization");
 
@@ -55,10 +54,6 @@ public class JwtFilter extends OncePerRequestFilter {
         try {
             String token = authHeader.substring(7);
 
-            if (jwtUtil.isExpired(token)) {
-                throw new RuntimeException("Token expired");
-            }
-
             String sessionId = jwtUtil.extractSessionId(token);
             String tokenUsername = jwtUtil.extractUsername(token);
 
@@ -67,11 +62,6 @@ public class JwtFilter extends OncePerRequestFilter {
             Session session = sessionRepository.findBySessionId(sessionId)
                     .orElseThrow(() -> new RuntimeException("Session not found"));
 
-//            // CHECK IF SESSION IS REVOKED (LOGGED OUT)
-//            if (session.isRevoked()) {
-//                throw new RuntimeException("Session revoked - please login again");
-//            }
-//
 
             if (session.getExpiresAt().isBefore(Instant.now())) {
                 throw new RuntimeException("Session expired");
@@ -90,10 +80,10 @@ public class JwtFilter extends OncePerRequestFilter {
 
 //            // FIX 2: Update last active time (optional - for tracking)
 //            // Only update if more than 5 minutes have passed (to reduce database writes)
-//            if (session.getLastActive().isBefore(Instant.now().minusSeconds(300))) {
-//                session.setLastActive(Instant.now());
-//                sessionRepository.save(session);
-//            }
+            if (session.getLastActive().isBefore(Instant.now().minusSeconds(300))) {
+                session.setLastActive(Instant.now());
+                sessionRepository.save(session);
+            }
 
             String username = session.getUser().getUsername();
 
@@ -130,16 +120,12 @@ public class JwtFilter extends OncePerRequestFilter {
     }
 
     private void sendError(HttpServletResponse response, HttpStatus status, String message) throws IOException {
+
         response.setStatus(status.value());
         response.setContentType("application/json");
-
-        response.getWriter().write(
-                String.format("""
-            {
-              "status": %d,
-              "message": "%s"
-            }
-            """, status.value(), message)
+        objectMapper.writeValue(
+                response.getWriter(),
+                Map.of("status", status.value(), "message", message)
         );
     }
 }

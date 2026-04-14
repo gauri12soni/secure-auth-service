@@ -3,9 +3,11 @@ package com.gauri.generateToken.controller;
 import com.gauri.generateToken.dto.JwtResponse;
 import com.gauri.generateToken.dto.LoginRequest;
 import com.gauri.generateToken.dto.RefreshRequest;
+import com.gauri.generateToken.dto.RegisterRequest;
 import com.gauri.generateToken.security.JwtUtil;
 import com.gauri.generateToken.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,24 +26,22 @@ public class AuthController {
     private JwtUtil jwtUtil;
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody LoginRequest request) {
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
         return authService.register(request);
     }
 
     @PostMapping("/login")
-    public JwtResponse login(@RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+    public JwtResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         // Auto-capture from browser
         String ipAddress = getClientIpAddress(httpRequest);  // Auto-detected
         String userAgent = httpRequest.getHeader("User-Agent");  // Auto-detected
 
-        // Set to your request object or pass directly to service
-        request.setIpAddress(ipAddress);
-        request.setUserAgent(userAgent);
-        return authService.login(request);
+
+        return authService.login(request, ipAddress, userAgent);
     }
 
     @PostMapping("/refresh")
-    public JwtResponse refresh(@RequestBody RefreshRequest request, HttpServletRequest httpRequest) {
+    public JwtResponse refresh(@Valid @RequestBody RefreshRequest request, HttpServletRequest httpRequest) {
 
         String ipAddress = getClientIpAddress(httpRequest);
         String userAgent = httpRequest.getHeader("User-Agent");
@@ -62,12 +62,6 @@ public class AuthController {
 
         return authService.logout(sessionId);
     }
-
-//    @PostMapping("/logout-all")
-//    public String logoutAll(Authentication authentication) {
-//        String username = authentication.getName();
-//        return authService.logoutAll(username);
-//    }
 
 
     // Get real client IP (handles proxies)

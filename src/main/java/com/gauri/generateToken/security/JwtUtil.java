@@ -22,13 +22,15 @@ public class JwtUtil {
     }
 
     public String generateToken(String username, String sessionId, long expiry) {
+
         return Jwts.builder()
-                .setSubject(username)
+                .subject(username)
                 .claim("sessionId", sessionId)
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + expiry))
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + expiry))
                 .signWith(getSigningKey())
                 .compact();
+
     }
 
     public String extractUsername(String token) {
@@ -44,10 +46,10 @@ public class JwtUtil {
     }
 
     private Claims getClaims(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
+        return Jwts.parser()
+                .verifyWith(getSigningKey())
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)
+                .getPayload();
     }
 }

@@ -11,24 +11,6 @@ import java.util.UUID;
 
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID> {
 
-//    //  Get token by session (used in logout / cleanup)
-//    Optional<RefreshToken> findBySession(Session session);
-//
-//    Optional<RefreshToken> findByTokenId(UUID tokenId);
-//
-//    //  Delete tokens for a session
-//    void deleteBySession(Session session);
-//
-//
-//    //  Used in refresh (since token is hashed)
-//    List<RefreshToken> findByRevokedFalse();
-
-//
-//    List<RefreshToken> findBySession(Session session);  // ← Changed Optional to List
-//
-//    Optional<RefreshToken> findByTokenHash(String tokenHash);  // ← Changed from findByTokenId
-//
-//    void deleteBySession(Session session);
 
     Optional<RefreshToken> findByTokenHash(String tokenHash);
     List<RefreshToken> findBySession(Session session);
