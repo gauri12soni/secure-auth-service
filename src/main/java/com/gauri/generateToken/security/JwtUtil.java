@@ -3,6 +3,7 @@ package com.gauri.generateToken.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 @Component
+@Slf4j
 public class JwtUtil {
 
     @Value("${jwt.secret}")
@@ -34,15 +36,12 @@ public class JwtUtil {
     }
 
     public String extractUsername(String token) {
+
         return getClaims(token).getSubject();
     }
 
     public String extractSessionId(String token) {
         return getClaims(token).get("sessionId", String.class);
-    }
-
-    public boolean isExpired(String token) {
-        return getClaims(token).getExpiration().before(new Date());
     }
 
     private Claims getClaims(String token) {

@@ -18,3 +18,13 @@ Thumbs.db
 # Application secrets
 src/main/resources/application.properties
 
+# Application logs
+application.log
+app.log
+
+# Log directories
+/logs/
+/log/
+
+# Spring Boot logs
+spring.log
